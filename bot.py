@@ -22,10 +22,12 @@ AVAILABLE_SERVICES = {
     }
 }
 
-# تهيئة قاعدة البيانات وإنشاء الجداول من الصفر نظيفة
+# تهيئة قاعدة البيانات والترحيل الآمن للأعمدة الجديدة
 def init_db():
     conn = sqlite3.connect("asouliq.db")
     cursor = conn.cursor()
+    
+    # 1. إنشاء الجدول الأساسي إذا لم يكن موجوداً
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             telegram_id INTEGER PRIMARY KEY,
@@ -36,6 +38,20 @@ def init_db():
             joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    
+    # 2. الترحيل الآمن: إضافة أي عمود ناقص تدريجياً دون مسح البيانات القديمة
+    columns_to_add = [
+        ("consent", "INTEGER DEFAULT 0"),
+        ("auto_updates", "INTEGER DEFAULT 0"),
+        ("interests", "TEXT DEFAULT 'gold,egx'")
+    ]
+    
+    for col_name, col_type in columns_to_add:
+        try:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type};")
+        except sqlite3.OperationalError:
+            pass  # العمود موجود مسبقاً، يتم تخطيه بأمان
+
     conn.commit()
     conn.close()
 
