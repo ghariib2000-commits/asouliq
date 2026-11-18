@@ -1,17 +1,19 @@
 import requests
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 import random
 
 def get_egx_market_data():
     try:
-        # حساب توقيت مصر بدقة تامة (UTC+2) بغض النظر عن إعدادات السيرفر
-        utc_now = datetime.now(timezone.utc)
-        cairo_time = utc_now + timedelta(hours=2)
-        current_time = cairo_time.strftime("%Y-%m-%d %H:%M:%S")
+        # جلب الوقت الحقيقي من القاهرة مباشرة
+        time_res = requests.get("http://worldtimeapi.org/api/timezone/Africa/Cairo", timeout=3)
+        if time_res.status_code == 200:
+            time_data = time_res.json()
+            datetime_str = time_data.get("datetime", "")
+            current_time = datetime_str.replace("T", " ")[:19]
+        else:
+            current_time = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         
-        # ربط التذبذب العشوائي بلحظة الطلب لضمان تغير المؤشرات في كل ضغطة
-        seed_val = datetime.now().second + datetime.now().microsecond
-        random.seed(seed_val)
+        random.seed(datetime.now().microsecond)
         
         egx30_base = 31250.0
         egx70_base = 8450.0
@@ -24,7 +26,7 @@ def get_egx_market_data():
         
         message = (
             "📈 <b>مؤشرات وتوصيات البورصة المصرية (EGX)</b> 🇪🇬\n"
-            f"<i>📅 التوقيت المحلي (القاهرة): {current_time}</i>\n\n"
+            f"<i>📅 التوقيت المحلي: {current_time}</i>\n\n"
             f"• <b>مؤشر EGX 30:</b> <code>{egx30_val:,.2f}</code> ({trend_icon} {change_pct}%)\n"
             f"• <b>مؤشر EGX 70:</b> <code>{egx70_val:,.2f}</code>\n"
             f"• <b>حالة السوق:</b> {('نشط ومستقر' if change_pct >= 0 else 'جني أرباح طفيف')}\n\n"
@@ -33,7 +35,5 @@ def get_egx_market_data():
         return message
         
     except Exception as e:
-        utc_now = datetime.now(timezone.utc)
-        cairo_time = utc_now + timedelta(hours=2)
-        current_time = cairo_time.strftime("%Y-%m-%d %H:%M:%S")
-        return f"⚠️ خطأ في جلب المؤشرات.\n<i>التوقيت: {current_time}</i>"
+        fallback_time = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        return f"⚠️ خطأ في جلب المؤشرات.\n<i>التوقيت: {fallback_time}</i>"
