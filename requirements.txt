@@ -1,4 +1,5 @@
 python-telegram-bot
-python-dotenv
 requests
 beautifulsoup4
+python-dotenv
+tzdata
