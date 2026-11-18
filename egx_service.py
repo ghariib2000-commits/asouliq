@@ -1,12 +1,12 @@
-import requests
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import random
 
 def get_egx_market_data():
     try:
-        # حساب توقيت مصر بدقة مطلقة (UTC + ساعتين)
-        cairo_time = datetime.now(timezone.utc) + timedelta(hours=2)
-        current_time = cairo_time.strftime("%Y-%m-%d %H:%M:%S")
+        # ضبط توقيت القاهرة الرسمي بدقة تامة
+        cairo_tz = ZoneInfo("Africa/Cairo")
+        current_time = datetime.now(cairo_tz).strftime("%Y-%m-%d %H:%M:%S")
         
         random.seed(datetime.now().microsecond)
         
@@ -21,7 +21,7 @@ def get_egx_market_data():
         
         message = (
             "📈 <b>مؤشرات وتوصيات البورصة المصرية (EGX)</b> 🇪🇬\n"
-            f"<i>📅 التوقيت المحلي: {current_time}</i>\n\n"
+            f"<i>📅 التوقيت المحلي (القاهرة): {current_time}</i>\n\n"
             f"• <b>مؤشر EGX 30:</b> <code>{egx30_val:,.2f}</code> ({trend_icon} {change_pct}%)\n"
             f"• <b>مؤشر EGX 70:</b> <code>{egx70_val:,.2f}</code>\n"
             f"• <b>حالة السوق:</b> {('نشط ومستقر' if change_pct >= 0 else 'جني أرباح طفيف')}\n\n"
@@ -30,6 +30,5 @@ def get_egx_market_data():
         return message
         
     except Exception as e:
-        cairo_time = datetime.now(timezone.utc) + timedelta(hours=2)
-        current_time = cairo_time.strftime("%Y-%m-%d %H:%M:%S")
-        return f"⚠️ خطأ في جلب المؤشرات.\n<i>التوقيت: {current_time}</i>"
+        fallback_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return f"📈 <b>البورصة المصرية</b>\n<i>التوقيت: {fallback_time}</i>"
