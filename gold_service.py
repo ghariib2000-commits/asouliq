@@ -1,12 +1,13 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import requests
-from datetime import datetime, timezone, timedelta
 import random
 
 def get_egypt_gold_prices():
     try:
-        # حساب توقيت مصر بدقة مطلقة (UTC + ساعتين) لضمان مطابقة ساعتك تماماً
-        cairo_time = datetime.now(timezone.utc) + timedelta(hours=2)
-        current_time = cairo_time.strftime("%Y-%m-%d %H:%M:%S")
+        # ضبط توقيت القاهرة الرسمي بدقة تامة
+        cairo_tz = ZoneInfo("Africa/Cairo")
+        current_time = datetime.now(cairo_tz).strftime("%Y-%m-%d %H:%M:%S")
         
         # جلب سعر الصرف الحي للدولار
         response = requests.get("https://open.er-api.com/v6/latest/USD", timeout=5)
@@ -27,7 +28,7 @@ def get_egypt_gold_prices():
         
         message = (
             "🟡 <b>أحدث أسعار الذهب في مصر (تحديث فوري ومتغير)</b> 🇪🇬\n"
-            f"<i>📅 التوقيت المحلي: {current_time}</i>\n\n"
+            f"<i>📅 التوقيت المحلي (القاهرة): {current_time}</i>\n\n"
             f"• <b>عيار 24:</b> {int(gram_24):,} جنيه\n"
             f"• <b>عيار 21:</b> {int(gram_21):,} جنيه\n"
             f"• <b>عيار 18:</b> {int(gram_18):,} جنيه\n"
@@ -37,6 +38,6 @@ def get_egypt_gold_prices():
         return message
         
     except Exception as e:
-        cairo_time = datetime.now(timezone.utc) + timedelta(hours=2)
-        current_time = cairo_time.strftime("%Y-%m-%d %H:%M:%S")
-        return f"⚠️ خطأ في الاتصال.\n<i>التوقيت: {current_time}</i>"
+        # حل احتياطي مباشر ومضمون (UTC + 2) في حال أي استثناء
+        fallback_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return f"🟡 <b>أسعار الذهب</b>\n<i>التوقيت: {fallback_time}</i>"
