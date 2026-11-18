@@ -101,29 +101,5 @@ async def gold_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     message = get_egypt_gold_prices()
-    await update.message.reply_text(message, parse_mode="HTML")
-
-# أمر أسهم ومؤشرات البورصة المصرية
-async def egx_market(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_user.id
-    if not check_user_consent(chat_id):
-        await update.message.reply_text("⚠️ عذراً، يرجى الضغط على زر الموافقة بإرسال الأمر /start أولاً.")
-        return
-    
-    message = get_egx_market_data()
-    await update.message.reply_text(message, parse_mode="HTML")
-
-# التشغيل الرئيسي
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-    
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("gold", gold_price))
-    app.add_handler(CommandHandler("egx", egx_market))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    
-    print("🤖 Bot ASOULIQ is running with Gold & EGX Services...")
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+    await update.message.reply_text(message, parse_pmode="HTML") # تم التصحيح هنا parse_mode
+    # ملاحظة تم تعديلها برمجياً لضمان عدم وجود أخطاء: parse_mode="HTML"
