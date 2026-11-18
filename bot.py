@@ -11,7 +11,7 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # ---------------------------------------------------------
-# 1. سجل الخدمات القابل للتوسع (أضف أي خدمة جديدة هنا مستقبلاً)
+# 1. سجل الخدمات القابل للتوسع
 # ---------------------------------------------------------
 AVAILABLE_SERVICES = {
     "gold": {
@@ -25,11 +25,13 @@ AVAILABLE_SERVICES = {
 }
 
 # ---------------------------------------------------------
-# 2. إدارة قاعدة البيانات والتفضيلات
+# 2. إدارة قاعدة البيانات والتفضيلات (مع تحديث تلقائي للأعمدة)
 # ---------------------------------------------------------
 def init_db():
     conn = sqlite3.connect("asouliq.db")
     cursor = conn.cursor()
+    
+    # إنشاء الجدول الأساسي إذا لم يكن موجوداً
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             telegram_id INTEGER PRIMARY KEY,
@@ -40,6 +42,23 @@ def init_db():
             joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    
+    # التأكد من إضافة الأعمدة الجديدة إذا كان الجدول قديماً لتجنب أخطاء OperationalError
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN consent INTEGER DEFAULT 0;")
+    except sqlite3.OperationalError:
+        pass
+        
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN auto_updates INTEGER DEFAULT 0;")
+    except sqlite3.OperationalError:
+        pass
+        
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN interests TEXT DEFAULT 'gold,egx';")
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
     conn.close()
 
