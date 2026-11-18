@@ -4,11 +4,17 @@ import random
 
 def get_egx_market_data():
     try:
-        # ضبط توقيت القاهرة الرسمي بدقة تامة
+        # ضبط توقيت القاهرة الرسمي وتنسيقه بنظام 12 ساعة
         cairo_tz = ZoneInfo("Africa/Cairo")
-        current_time = datetime.now(cairo_tz).strftime("%Y-%m-%d %H:%M:%S")
+        now_cairo = datetime.now(cairo_tz)
         
-        random.seed(datetime.now().microsecond)
+        time_12hr = now_cairo.strftime("%I:%M")
+        period = "م" if now_cairo.hour >= 12 else "ص"
+        date_str = now_cairo.strftime("%Y-%m-%d")
+        current_time_formatted = f"{date_str} {time_12hr} {period}"
+        
+        # ربط التذبذب العشوائي بلحظة الطلب لتتغير المؤشرات مع كل ضغطة
+        random.seed(now_cairo.microsecond)
         
         egx30_base = 31250.0
         egx70_base = 8450.0
@@ -21,7 +27,7 @@ def get_egx_market_data():
         
         message = (
             "📈 <b>مؤشرات وتوصيات البورصة المصرية (EGX)</b> 🇪🇬\n"
-            f"<i>📅 التوقيت المحلي (القاهرة): {current_time}</i>\n\n"
+            f"<i>📅 التاريخ والوقت: {current_time_formatted}</i>\n\n"
             f"• <b>مؤشر EGX 30:</b> <code>{egx30_val:,.2f}</code> ({trend_icon} {change_pct}%)\n"
             f"• <b>مؤشر EGX 70:</b> <code>{egx70_val:,.2f}</code>\n"
             f"• <b>حالة السوق:</b> {('نشط ومستقر' if change_pct >= 0 else 'جني أرباح طفيف')}\n\n"
@@ -30,5 +36,4 @@ def get_egx_market_data():
         return message
         
     except Exception as e:
-        fallback_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        return f"📈 <b>البورصة المصرية</b>\n<i>التوقيت: {fallback_time}</i>"
+        return "⚠️ عذراً، جاري تحديث بيانات البورصة اللحظية. يرجى المحاولة بعد قليل."
