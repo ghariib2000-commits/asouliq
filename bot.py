@@ -10,9 +10,7 @@ from egx_service import get_egx_market_data
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-# ---------------------------------------------------------
-# 1. سجل الخدمات القابل للتوسع
-# ---------------------------------------------------------
+# سجل الخدمات القابل للتوسع
 AVAILABLE_SERVICES = {
     "gold": {
         "name": "🟡 أسعار الذهب في مصر",
@@ -24,14 +22,10 @@ AVAILABLE_SERVICES = {
     }
 }
 
-# ---------------------------------------------------------
-# 2. إدارة قاعدة البيانات والتفضيلات (مع تحديث تلقائي للأعمدة)
-# ---------------------------------------------------------
+# تهيئة قاعدة البيانات وإنشاء الجداول من الصفر نظيفة
 def init_db():
     conn = sqlite3.connect("asouliq.db")
     cursor = conn.cursor()
-    
-    # إنشاء الجدول الأساسي إذا لم يكن موجوداً
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             telegram_id INTEGER PRIMARY KEY,
@@ -42,23 +36,6 @@ def init_db():
             joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
-    # التأكد من إضافة الأعمدة الجديدة إذا كان الجدول قديماً لتجنب أخطاء OperationalError
-    try:
-        cursor.execute("ALTER TABLE users ADD COLUMN consent INTEGER DEFAULT 0;")
-    except sqlite3.OperationalError:
-        pass
-        
-    try:
-        cursor.execute("ALTER TABLE users ADD COLUMN auto_updates INTEGER DEFAULT 0;")
-    except sqlite3.OperationalError:
-        pass
-        
-    try:
-        cursor.execute("ALTER TABLE users ADD COLUMN interests TEXT DEFAULT 'gold,egx';")
-    except sqlite3.OperationalError:
-        pass
-
     conn.commit()
     conn.close()
 
@@ -79,15 +56,13 @@ def update_user_pref(chat_id, field, value):
     conn.commit()
     conn.close()
 
-# ---------------------------------------------------------
-# 3. القوائم التفاعلية (Keyboards)
-# ---------------------------------------------------------
+# القوائم التفاعلية
 def main_menu_keyboard():
     keyboard = []
     for key, service in AVAILABLE_SERVICES.items():
         keyboard.append([InlineKeyboardButton(service["name"], callback_data=f"fetch_{key}")])
     
-    keyboard.append([InlineKeyboardButton("⚙️ إعدادات المتابعة والتنبيهات التلقائية", callback_data="menu_settings")])
+    keyboard.append([InlineKeyboardButton("⚙️ إعدادات المتابعة والتنبيهات", callback_data="menu_settings")])
     return InlineKeyboardMarkup(keyboard)
 
 def settings_keyboard(chat_id):
@@ -95,7 +70,7 @@ def settings_keyboard(chat_id):
     auto_updates = user_data[1] if user_data else 0
     interests = user_data[2].split(",") if (user_data and user_data[2]) else []
 
-    auto_text = "🔔 التحديث التلقائي: مُفعّل (اضغط للإيقاف)" if auto_updates == 1 else "🔕 التحديث التلقائي: متوقف (سؤال يدوي فقط)"
+    auto_text = "🔔 التحديث التلقائي: مُفعّل (اضغط للإيقاف)" if auto_updates == 1 else "🔕 التحديث التلقائي: متوقف"
     
     keyboard = [
         [InlineKeyboardButton(auto_text, callback_data="toggle_auto")]
@@ -108,9 +83,7 @@ def settings_keyboard(chat_id):
     keyboard.append([InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="main_menu")])
     return InlineKeyboardMarkup(keyboard)
 
-# ---------------------------------------------------------
-# 4. معالجة الأوامر والأزرار
-# ---------------------------------------------------------
+# معالجة الأوامر
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = user.id
@@ -123,10 +96,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu_keyboard()
         )
     else:
-        keyboard = [[InlineKeyboardButton("✅ أوافق على الشروط وأرغب في البدء", callback_data="consent_yes")]]
+        keyboard = [[InlineKeyboardButton("✅ أوافق على شروط الخدمة وأرغب في البدء", callback_data="consent_yes")]]
         await update.message.reply_text(
             f"مرحباً بك يا {user.first_name} في منصة **ASOULIQ** لأسواق المال في مصر. 🇪🇬\n\n"
-            "يرجى تأكيد موافقتك للوصول إلى الأسعار والقوائم التفاعلية:",
+            "يرجى تأكيد موافقتك للوصول إلى القوائم التفاعلية والأسعار:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
@@ -150,7 +123,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(
             "✅ **تم تفعيل حسابك بنجاح!**\n\n"
-            "يمكنك الآن اختيار أي خدمة من القائمة أدناه لمعرفة الأسعار فوراً، أو الدخول إلى الإعدادات لاختيار ما تود متابعته تلقائياً:",
+            "يمكنك الآن اختيار أي خدمة لمعرفة الأسعار فوراً، أو الدخول إلى الإعدادات لتخصيص تنبيهاتك:",
             reply_markup=main_menu_keyboard()
         )
         return
@@ -169,8 +142,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "menu_settings":
         await query.edit_message_text(
             "⚙️ **إعدادات التفضيلات والمتابعة:**\n\n"
-            "• يمكنك تفعيل أو إيقاف الإرسال التلقائي للأسعار.\n"
-            "• يمكنك تحديد المجالات التي تهمك فقط ليصلك جديدها:",
+            "• يمكنك تفعيل أو إيقاف استلام التحديثات.\n"
+            "• يمكنك تحديد الأقسام التي تهمك:",
             reply_markup=settings_keyboard(chat_id)
         )
 
