@@ -1,17 +1,12 @@
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import random
 
 def get_egx_market_data():
     try:
-        # جلب الوقت الحقيقي من القاهرة مباشرة
-        time_res = requests.get("http://worldtimeapi.org/api/timezone/Africa/Cairo", timeout=3)
-        if time_res.status_code == 200:
-            time_data = time_res.json()
-            datetime_str = time_data.get("datetime", "")
-            current_time = datetime_str.replace("T", " ")[:19]
-        else:
-            current_time = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        # حساب توقيت مصر بدقة مطلقة (UTC + ساعتين)
+        cairo_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        current_time = cairo_time.strftime("%Y-%m-%d %H:%M:%S")
         
         random.seed(datetime.now().microsecond)
         
@@ -35,5 +30,6 @@ def get_egx_market_data():
         return message
         
     except Exception as e:
-        fallback_time = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
-        return f"⚠️ خطأ في جلب المؤشرات.\n<i>التوقيت: {fallback_time}</i>"
+        cairo_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        current_time = cairo_time.strftime("%Y-%m-%d %H:%M:%S")
+        return f"⚠️ خطأ في جلب المؤشرات.\n<i>التوقيت: {current_time}</i>"
