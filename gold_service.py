@@ -1,11 +1,12 @@
 import requests
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import random
 
 def get_egypt_gold_prices():
     try:
-        # ضبط توقيت مصر المحلي بدقة (GMT+2)
-        cairo_tz = timezone(timedelta(hours=2))
+        # ضبط توقيت مصر المحلي بدقة باستخدام ZoneInfo الرسمي
+        cairo_tz = ZoneInfo("Africa/Cairo")
         current_time = datetime.now(cairo_tz).strftime("%Y-%m-%d %H:%M:%S")
         
         # جلب سعر الصرف الحي للدولار مقابل الجنيه لربط الأسعار بقيمة حقيقية ومتغيرة
@@ -39,6 +40,6 @@ def get_egypt_gold_prices():
         return "⚠️ تعذر جلب الأسعار حالياً، يرجى المحاولة لاحقاً."
         
     except Exception as e:
-        cairo_tz = timezone(timedelta(hours=2))
+        cairo_tz = ZoneInfo("Africa/Cairo")
         current_time = datetime.now(cairo_tz).strftime("%Y-%m-%d %H:%M:%S")
         return f"⚠️ خطأ في الاتصال.\n<i>التوقيت: {current_time}</i>"
