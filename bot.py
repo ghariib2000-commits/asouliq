@@ -10,7 +10,25 @@ from egx_service import get_egx_market_data
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-# تهيئة قاعدة البيانات ونظام الموافقة (Opt-In)
+# ---------------------------------------------------------
+# 1. سجل الخدمات القابل للتوسع (أضف أي خدمة جديدة هنا مستقبلاً)
+# ---------------------------------------------------------
+AVAILABLE_SERVICES = {
+    "gold": {
+        "name": "🟡 أسعار الذهب في مصر",
+        "handler": get_egypt_gold_prices
+    },
+    "egx": {
+        "name": "📈 البورصة المصرية والتوصيات",
+        "handler": get_egx_market_data
+    }
+    # يمكنك مستقبلاً إضافة:
+    # "currency": {"name": "💵 أسعار العملات", "handler": get_currency_prices}
+}
+
+# ---------------------------------------------------------
+# 2. إدارة قاعدة البيانات والتفضيلات
+# ---------------------------------------------------------
 def init_db():
     conn = sqlite3.connect("asouliq.db")
     cursor = conn.cursor()
@@ -19,6 +37,8 @@ def init_db():
             telegram_id INTEGER PRIMARY KEY,
             full_name TEXT,
             consent INTEGER DEFAULT 0,
+            auto_updates INTEGER DEFAULT 0,
+            interests TEXT DEFAULT 'gold,egx',
             joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -27,79 +47,160 @@ def init_db():
 
 init_db()
 
-# أمر البدء /start
+def get_user(chat_id):
+    conn = sqlite3.connect("asouliq.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT consent, auto_updates, interests FROM users WHERE telegram_id = ?", (chat_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row
+
+def update_user_pref(chat_id, field, value):
+    conn = sqlite3.connect("asouliq.db")
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE users SET {field} = ? WHERE telegram_id = ?", (value, chat_id))
+    conn.commit()
+    conn.close()
+
+# ---------------------------------------------------------
+# 3. القوائم التفاعلية (Keyboards)
+# ---------------------------------------------------------
+def main_menu_keyboard():
+    keyboard = []
+    # إنشاء أزرار الخدمات تلقائياً من السجل القابل للتوسع
+    for key, service in AVAILABLE_SERVICES.items():
+        keyboard.append([InlineKeyboardButton(service["name"], callback_data=f"fetch_{key}")])
+    
+    # زر التحكم في الإشعارات والاهتمامات
+    keyboard.append([InlineKeyboardButton("⚙️ إعدادات المتابعة والتنبيهات التلقائية", callback_data="menu_settings")])
+    return InlineKeyboardMarkup(keyboard)
+
+def settings_keyboard(chat_id):
+    user_data = get_user(chat_id)
+    auto_updates = user_data[1] if user_data else 0
+    interests = user_data[2].split(",") if (user_data and user_data[2]) else []
+
+    auto_text = "🔔 التحديث التلقائي: مُفعّل (اضغط للإيقاف)" if auto_updates == 1 else "🔕 التحديث التلقائي: متوقف (سؤال يدوي فقط)"
+    
+    keyboard = [
+        [InlineKeyboardButton(auto_text, callback_data="toggle_auto")]
+    ]
+    
+    # أزرار اختيار الاهتمامات المحددة
+    for key, service in AVAILABLE_SERVICES.items():
+        status_icon = "✅" if key in interests else "⬜"
+        keyboard.append([InlineKeyboardButton(f"{status_icon} متابعة: {service['name']}", callback_data=f"toggle_int_{key}")])
+        
+    keyboard.append([InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="main_menu")])
+    return InlineKeyboardMarkup(keyboard)
+
+# ---------------------------------------------------------
+# 4. معالجة الأوامر والأزرار
+# ---------------------------------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = user.id
-    
-    conn = sqlite3.connect("asouliq.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT consent FROM users WHERE telegram_id = ?", (chat_id,))
-    row = cursor.fetchone()
-    conn.close()
+    user_data = get_user(chat_id)
 
-    if row and row[0] == 1:
+    if user_data and user_data[0] == 1:
         await update.message.reply_text(
-            f"أهلاً بك مجدداً يا {user.first_name} في منصة **ASOULIQ** المالية! 📊\n\n"
-            "اختر ما ترغب في متابعته من الأوامر التالية:\n"
-            "🟡 /gold - أسعار الذهب اليوم في مصر\n"
-            "📈 /egx - مؤشرات وتوصيات البورصة المصرية\n"
-            "ℹ️ /help - للمساعدة والدعم"
+            f"أهلاً بك يا {user.first_name} في منصة **ASOULIQ** المالية! 📊\n"
+            "اختر الخدمة التي تريد الاطلاع عليها الآن أو اضبط إعداداتك:",
+            reply_markup=main_menu_keyboard()
         )
     else:
-        keyboard = [
-            [InlineKeyboardButton("✅ أوافق وأرغب في متابعة الأسواق", callback_data="consent_yes")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
+        keyboard = [[InlineKeyboardButton("✅ أوافق على الشروط وأرغب في البدء", callback_data="consent_yes")]]
         await update.message.reply_text(
-            f"مرحباً بك يا {user.first_name} في منصة **ASOULIQ** لأسواق المال والذهب في مصر. 🇪🇬\n\n"
-            "للاستفادة من خدمات التنبيهات وأسعار الذهب والأسهم، يرجى تأكيد موافقتك على استخدام الخدمة بالضغط على الزر أدناه:",
-            reply_markup=reply_markup
+            f"مرحباً بك يا {user.first_name} في منصة **ASOULIQ** لأسواق المال في مصر. 🇪🇬\n\n"
+            "يرجى تأكيد موافقتك للوصول إلى الأسعار والقوائم التفاعلية:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-# معالجة الموافقة
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
-    if query.data == "consent_yes":
-        user = query.from_user
-        chat_id = user.id
-        
+    user = query.from_user
+    chat_id = user.id
+    data = query.data
+
+    # 1. تسجيل الموافقة المبدئية
+    if data == "consent_yes":
         conn = sqlite3.connect("asouliq.db")
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO users (telegram_id, full_name, consent) 
-            VALUES (?, ?, 1)
+            INSERT INTO users (telegram_id, full_name, consent, auto_updates, interests) 
+            VALUES (?, ?, 1, 0, 'gold,egx')
             ON CONFLICT(telegram_id) DO UPDATE SET consent=1
         """, (chat_id, user.full_name))
         conn.commit()
         conn.close()
-        
+
         await query.edit_message_text(
-            "✅ **تم تسجيل موافقتك بنجاح!**\n\n"
-            "أهلاً بك في عائلة ASOULIQ. يمكنك الآن استخدام:\n"
-            "🟡 الأمر `/gold` لمعرفة أسعار الذهب.\n"
-            "📈 الأمر `/egx` لمتابعة البورصة والأسهم."
+            "✅ **تم تفعيل حسابك بنجاح!**\n\n"
+            "يمكنك الآن اختيار أي خدمة من القائمة أدناه لمعرفة الأسعار فوراً، أو الدخول إلى الإعدادات لاختيار ما تود متابعته تلقائياً:",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    # التحقق من الموافقة لأي ضغطة أخرى
+    user_data = get_user(chat_id)
+    if not user_data or user_data[0] != 1:
+        await query.edit_message_text("⚠️ يرجى إرسال /start والموافقة أولاً.")
+        return
+
+    # 2. العودة للقائمة الرئيسية
+    if data == "main_menu":
+        await query.edit_message_text(
+            "📊 **القائمة الرئيسية - منصة ASOULIQ**\nاختر الخدمة المطلوبة:",
+            reply_markup=main_menu_keyboard()
         )
 
-# دالة التحقق من الموافقة قبل تنفيذ أي أمر مالي
-def check_user_consent(chat_id):
-    conn = sqlite3.connect("asouliq.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT consent FROM users WHERE telegram_id = ?", (chat_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return row and row[0] == 1
+    # 3. فتح قائمة الإعدادات والتفضيلات
+    elif data == "menu_settings":
+        await query.edit_message_text(
+            "⚙️ **إعدادات التفضيلات والمتابعة:**\n\n"
+            "• يمكنك تفعيل أو إيقاف الإرسال التلقائي للأسعار.\n"
+            "• يمكنك تحديد المجالات التي تهمك فقط ليصلك جديدها:",
+            reply_markup=settings_keyboard(chat_id)
+        )
 
-# أمر أسعار الذهب
-async def gold_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_user.id
-    if not check_user_consent(chat_id):
-        await update.message.reply_text("⚠️ عذراً، يرجى الضغط على زر الموافقة بإرسال الأمر /start أولاً.")
-        return
+    # 4. تبديل حالة التحديث التلقائي (تلقائي / يدوي)
+    elif data == "toggle_auto":
+        new_status = 0 if user_data[1] == 1 else 1
+        update_user_pref(chat_id, "auto_updates", new_status)
+        await query.edit_message_reply_markup(reply_markup=settings_keyboard(chat_id))
+
+    # 5. تبديل اهتمام معين (إضافة أو إزالة خدمة)
+    elif data.startswith("toggle_int_"):
+        service_key = data.replace("toggle_int_", "")
+        current_interests = user_data[2].split(",") if user_data[2] else []
+        
+        if service_key in current_interests:
+            current_interests.remove(service_key)
+        else:
+            current_interests.append(service_key)
+            
+        updated_str = ",".join(filter(None, current_interests))
+        update_user_pref(chat_id, "interests", updated_str)
+        await query.edit_message_reply_markup(reply_markup=settings_keyboard(chat_id))
+
+    # 6. جلب البيانات عند طلب المستخدم (يدوياً من القائمة)
+    elif data.startswith("fetch_"):
+        service_key = data.replace("fetch_", "")
+        if service_key in AVAILABLE_SERVICES:
+            # استدعاء دالة الخدمة ديناميكياً
+            result_message = AVAILABLE_SERVICES[service_key]["handler"]()
+            back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="main_menu")]])
+            await query.edit_message_text(result_message, parse_mode="HTML", reply_markup=back_btn)
+
+# التشغيل الرئيسي
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
     
-    message = get_egypt_gold_prices()
-    await update.message.reply_text(message, parse_pmode="HTML") # تم التصحيح هنا parse_mode
-    # ملاحظة تم تعديلها برمجياً لضمان عدم وجود أخطاء: parse_mode="HTML"
+    print("🤖 ASOULIQ Interactive & Scalable Bot is running...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
