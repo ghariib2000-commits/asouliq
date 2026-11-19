@@ -81,7 +81,23 @@ GOLD_ASSETS: tuple[AssetDefinition, ...] = (
     ),
 )
 
-ASSETS: tuple[AssetDefinition, ...] = CURRENCIES + GOLD_ASSETS
+INDEX_ASSETS: tuple[AssetDefinition, ...] = (
+    AssetDefinition(
+        "EGX30", KIND_INDEX, "مؤشر EGX 30", "EGX 30 Index",
+        unit="نقطة", provider_key="egx",
+    ),
+    AssetDefinition(
+        "EGX70EWI", KIND_INDEX, "مؤشر EGX 70", "EGX 70 EWI Index",
+        unit="نقطة", provider_key="egx",
+    ),
+    AssetDefinition(
+        "EGX100EWI", KIND_INDEX, "مؤشر EGX 100", "EGX 100 EWI Index",
+        unit="نقطة", provider_key="egx",
+    ),
+)
+
+# أسهم البورصة المصرية تُسجَّل تلقائيًا من المصدر عند أول جلب (auto_register).
+ASSETS: tuple[AssetDefinition, ...] = CURRENCIES + GOLD_ASSETS + INDEX_ASSETS
 
 
 def sync_assets(db_path: str | Path | None = None, definitions=ASSETS) -> int:

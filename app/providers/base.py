@@ -21,6 +21,7 @@ class Quote:
     unit: str
     decimals: int = 0
     source_updated_at: str = ""
+    change_pct: float | None = None
 
 
 @dataclass(frozen=True)

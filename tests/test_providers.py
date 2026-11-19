@@ -2,7 +2,6 @@ import unittest
 from unittest.mock import patch
 
 from app import config
-from app.providers.egx import EgxProvider
 from app.providers.gold_egp import TROY_OUNCE_GRAMS, GoldEgyptProvider
 
 
@@ -40,15 +39,8 @@ class GoldProviderTests(unittest.TestCase):
         self.assertIsNotNone(result.error)
 
 
-class EgxProviderTests(unittest.TestCase):
-    def test_never_reports_fabricated_prices(self) -> None:
-        result = EgxProvider().fetch()
-
-        self.assertFalse(result.ok)
-        self.assertEqual(result.quotes, ())
-        self.assertIsNotNone(result.unavailable_reason)
-        self.assertNotIn("microsecond", str(result.meta))
-
+# ملاحظة: مزود البورصة المصرية له ملف اختبار مستقل (tests/test_egx.py)
+# يتحقق من عدم عرض أي أرقام عند فشل المصدر — بدون ضرب الشبكة.
 
 if __name__ == "__main__":
     unittest.main()

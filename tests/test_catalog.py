@@ -2,7 +2,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.catalog import ASSETS, CURRENCIES, GOLD_ASSETS, count_by_kind, sync_assets
+from app.catalog import (
+    ASSETS,
+    CURRENCIES,
+    GOLD_ASSETS,
+    INDEX_ASSETS,
+    count_by_kind,
+    sync_assets,
+)
 from app.db.connection import connect
 from app.services import assets
 from tests.helpers import make_db
@@ -20,7 +27,8 @@ class CatalogTests(unittest.TestCase):
     def test_all_eighteen_currencies_and_gold_are_seeded(self) -> None:
         self.assertEqual(len(CURRENCIES), 18)
         self.assertEqual(len(GOLD_ASSETS), 4)
-        self.assertEqual(len(ASSETS), 22)
+        self.assertEqual(len(INDEX_ASSETS), 3)
+        self.assertEqual(len(ASSETS), 25)
 
         conn = connect(self.db)
         try:
@@ -30,6 +38,7 @@ class CatalogTests(unittest.TestCase):
 
         self.assertEqual(kinds["currency"], 18)
         self.assertEqual(kinds["commodity"], 4)
+        self.assertEqual(kinds["index"], 3)
 
     def test_sync_is_idempotent(self) -> None:
         sync_assets(self.db)
@@ -40,7 +49,7 @@ class CatalogTests(unittest.TestCase):
             total = conn.execute("SELECT COUNT(*) AS c FROM assets").fetchone()["c"]
         finally:
             conn.close()
-        self.assertEqual(total, 22)
+        self.assertEqual(total, 25)
 
     def test_yen_uses_hundred_unit_quoting(self) -> None:
         yen = assets.get_asset("JPY", self.db)

@@ -59,7 +59,7 @@ ALERT_MAX_RULES: int = int(_env("ALERT_MAX_RULES") or "20")
 PROVIDER_REFRESH_SECONDS: dict[str, int] = {
     "gold": int(_env("GOLD_REFRESH_SECONDS") or "300"),
     "fx": int(_env("FX_REFRESH_SECONDS") or "1800"),
-    "egx": int(_env("EGX_REFRESH_SECONDS") or "300"),
+    "egx": int(_env("EGX_REFRESH_SECONDS") or "900"),
 }
 
 LOG_LEVEL: str = _env("LOG_LEVEL", "INFO") or "INFO"

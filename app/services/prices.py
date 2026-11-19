@@ -30,10 +30,27 @@ def save_result(result: ProviderResult, db_path: str | Path | None = None) -> in
 
     with session(db_path) as conn:
         known = {row["code"] for row in conn.execute("SELECT code FROM assets")}
+        auto_register = bool(result.meta.get("auto_register"))
+        register_kind = str(result.meta.get("register_kind") or "equity")
+
         for quote in result.quotes:
             if quote.code not in known:
-                logger.warning("سعر لأصل غير مسجل تم تجاوزه: %s", quote.code)
-                continue
+                if not auto_register:
+                    logger.warning("سعر لأصل غير مسجل تم تجاوزه: %s", quote.code)
+                    continue
+                # مثل أسهم البورصة: تُسجَّل تلقائيًا عند أول ظهور.
+                conn.execute(
+                    """
+                    INSERT INTO assets (code, kind, name_ar, name_en, unit, provider_key)
+                    VALUES (?, ?, ?, ?, 'جنيه', ?)
+                    ON CONFLICT(code) DO UPDATE SET
+                        name_ar = excluded.name_ar,
+                        name_en = excluded.name_en
+                    """,
+                    (quote.code, register_kind, quote.label, quote.label, result.provider_key),
+                )
+                known.add(quote.code)
+                logger.info("أصل جديد مسجل تلقائيًا: %s", quote.code)
 
             # نحفظ السعر السابق الصالح لتنبيهات النسبة المئوية.
             previous = conn.execute(
