@@ -1,0 +1,17 @@
+# أسرار وملفات بيئة
+.env
+.env.*
+!.env.example
+
+# قاعدة البيانات وملفاتها المؤقتة (لا تُرفع أبدًا)
+*.db
+*.db-wal
+*.db-shm
+backups/
+
+# بايثون
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
