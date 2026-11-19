@@ -48,6 +48,12 @@ PRICE_CACHE_TTL_SECONDS: int = int(_env("PRICE_CACHE_TTL_SECONDS") or "60")
 # بعد هذه المدة يُعتبر السعر المخزَّن قديمًا ويُعرض بعلامة تحذير.
 PRICE_STALE_MINUTES: int = int(_env("PRICE_STALE_MINUTES") or "30")
 
+# محرك التنبيهات
+ALERTS_ENABLED: bool = _env("ALERTS_ENABLED", "1") not in {"0", "false", "False"}
+ALERT_INTERVAL_SECONDS: int = int(_env("ALERT_INTERVAL_SECONDS") or "300")
+ALERT_COOLDOWN_MINUTES: int = int(_env("ALERT_COOLDOWN_MINUTES") or "60")
+ALERT_MAX_RULES: int = int(_env("ALERT_MAX_RULES") or "20")
+
 LOG_LEVEL: str = _env("LOG_LEVEL", "INFO") or "INFO"
 
 

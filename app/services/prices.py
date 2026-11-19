@@ -33,17 +33,33 @@ def save_result(result: ProviderResult, db_path: str | Path | None = None) -> in
             if quote.code not in known:
                 logger.warning("سعر لأصل غير مسجل تم تجاوزه: %s", quote.code)
                 continue
+
+            # نحفظ السعر السابق الصالح لتنبيهات النسبة المئوية.
+            previous = conn.execute(
+                "SELECT price, prev_price, prev_fetched_at FROM latest_prices WHERE asset_code = ?",
+                (quote.code,),
+            ).fetchone()
+            if previous is None:
+                prev_price, prev_fetched_at = None, None
+            elif float(previous["price"]) == float(quote.value):
+                prev_price, prev_fetched_at = previous["prev_price"], previous["prev_fetched_at"]
+            else:
+                prev_price, prev_fetched_at = previous["price"], fetched_at
+
             conn.execute(
                 """
                 INSERT INTO latest_prices
-                    (asset_code, price, currency, source, updated_at, fetched_at, provider_key)
-                VALUES (?, ?, 'EGP', ?, ?, ?, ?)
+                    (asset_code, price, currency, source, updated_at, fetched_at,
+                     provider_key, prev_price, prev_fetched_at)
+                VALUES (?, ?, 'EGP', ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(asset_code) DO UPDATE SET
-                    price        = excluded.price,
-                    source       = excluded.source,
-                    updated_at   = excluded.updated_at,
-                    fetched_at   = excluded.fetched_at,
-                    provider_key = excluded.provider_key
+                    price         = excluded.price,
+                    source        = excluded.source,
+                    updated_at    = excluded.updated_at,
+                    fetched_at    = excluded.fetched_at,
+                    provider_key  = excluded.provider_key,
+                    prev_price    = excluded.prev_price,
+                    prev_fetched_at= excluded.prev_fetched_at
                 """,
                 (
                     quote.code,
@@ -52,6 +68,8 @@ def save_result(result: ProviderResult, db_path: str | Path | None = None) -> in
                     quote.source_updated_at or fetched_at,
                     fetched_at,
                     result.provider_key,
+                    prev_price,
+                    prev_fetched_at,
                 ),
             )
             saved += 1

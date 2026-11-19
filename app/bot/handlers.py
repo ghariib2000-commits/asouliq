@@ -21,7 +21,7 @@ from telegram.ext import (
 from app import config
 from app.db.backup import BackupError, backup_database
 from app.providers import PROVIDERS
-from app.services import assets, market, prices, users, watchlist
+from app.services import alerts, assets, market, prices, users, watchlist
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🔍 البحث", callback_data="menu_search"),
         ]
     )
+    rows.append([InlineKeyboardButton("🔔 تنبيهاتي", callback_data="menu_alerts")])
     rows.append(
         [InlineKeyboardButton("⚙️ إعدادات المتابعة والتنبيهات", callback_data="menu_settings")]
     )
@@ -127,6 +128,46 @@ def search_view(term: str, telegram_id: int) -> tuple[str, InlineKeyboardMarkup]
             )
     rows.append([InlineKeyboardButton(BACK_BUTTON, callback_data="main_menu")])
     return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+def alerts_view(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    """قائمة تنبيهات المستخدم مع زر حذف لكل واحد."""
+    rules = alerts.list_rules(telegram_id)
+    heading = "🔔 <b>تنبيهاتي</b>"
+    usage = (
+        "لإضافة تنبيه:\n"
+        "<code>/alert USD above 55</code> — لما السعر يوصل 55\n"
+        "<code>/alert GOLD_21 below 5500</code> — لما ينزل 5500\n"
+        "<code>/alert USD up 2</code> — لما يرتفع 2%\n"
+        "<code>/alert USD down 2</code> — لما ينزل 2%"
+    )
+
+    if not rules:
+        return (
+            f"{heading}\n\nمفيش تنبيهات لحد الآن.\n\n{usage}",
+            _back_keyboard(),
+        )
+
+    lines = [f"{heading} ({len(rules)})", ""]
+    buttons = []
+    for rule in rules:
+        is_pct = rule["rule_type"] in (alerts.RULE_PCT_UP, alerts.RULE_PCT_DOWN)
+        suffix = "%" if is_pct else f" {rule['unit']}"
+        lines.append(
+            f"• <b>#{rule['id']}</b> {rule['name_ar']} ({rule['asset_code']}): "
+            f"{alerts.RULE_LABELS[rule['rule_type']]} {rule['threshold']:,.2f}{suffix}"
+        )
+        buttons.append(
+            InlineKeyboardButton(f"🗑 #{rule['id']} {rule['asset_code']}", callback_data=f"al_del:{rule['id']}")
+        )
+
+    lines.append("")
+    lines.append("<i>الحذف بالضغط على الزر. الإضافة بالأوامر:</i>")
+    lines.append("<code>/alert USD above 55</code>")
+
+    keyboard = _chunk(buttons)
+    keyboard.append([InlineKeyboardButton(BACK_BUTTON, callback_data="main_menu")])
+    return "\n".join(lines), InlineKeyboardMarkup(keyboard)
 
 
 def _refresh_watchlist_prices(telegram_id: int) -> None:
@@ -258,6 +299,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             parse_mode="HTML",
         )
 
+    elif data == "menu_alerts":
+        text, keyboard = alerts_view(telegram_id)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+    elif data.startswith("al_del:"):
+        try:
+            rule_id = int(data.split(":", 1)[1])
+        except ValueError:
+            await query.answer("رقم غير صالح")
+            return
+        removed = alerts.remove_rule(telegram_id, rule_id)
+        await query.answer("🗑 تم حذف التنبيه" if removed else "التنبيه غير موجود")
+        text, keyboard = alerts_view(telegram_id)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
+
     elif data == "menu_watchlist":
         await query.edit_message_text(
             "⭐ <b>قائمتي</b>\n\nجاري تحميل أسعار أصولك...",
@@ -304,6 +360,81 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await _send_prices(query, data.replace("fetch_", ""))
 
 
+async def alerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if update.message is None or user is None:
+        return
+    if not users.has_consent(user.id):
+        await update.message.reply_text("⚠️ يرجى إرسال /start والموافقة أولاً.")
+        return
+
+    text, keyboard = alerts_view(user.id)
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+
+async def alert_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/alert <كود الأصل> <نوع التنبيه> <القيمة>"""
+    user = update.effective_user
+    if update.message is None or user is None:
+        return
+    if not users.has_consent(user.id):
+        await update.message.reply_text("⚠️ يرجى إرسال /start والموافقة أولاً.")
+        return
+
+    args = context.args or []
+    if len(args) < 3:
+        await update.message.reply_text(
+            "🔔 <b>طريقة إضافة تنبيه</b>\n\n"
+            "<code>/alert USD above 55</code>\n"
+            "<code>/alert GOLD_21 below 5500</code>\n"
+            "<code>/alert USD up 2</code>\n"
+            "<code>/alert USD down 2</code>\n\n"
+            "الأنواع المقبولة: above/فوق، below/تحت، up/ارتفاع، down/انخفاض.",
+            parse_mode="HTML",
+        )
+        return
+
+    code, raw_type, raw_value = args[0], args[1], args[2]
+    rule_type = alerts.normalize_rule_type(raw_type)
+    if rule_type is None:
+        await update.message.reply_text(
+            "⚠️ نوع تنبيه غير معروف. استخدم: above, below, up, down"
+        )
+        return
+
+    try:
+        threshold = float(raw_value.replace("%", "").replace(",", ""))
+    except ValueError:
+        await update.message.reply_text("⚠️ القيمة لازم تكون رقمًا، مثال: 55 أو 2.5")
+        return
+
+    asset = assets.get_asset(code)
+    if asset is None:
+        await update.message.reply_text(
+            f"⚠️ الأصل <code>{code}</code> غير موجود. جرّب /search للبحث.", parse_mode="HTML"
+        )
+        return
+
+    rule_id = alerts.add_rule(user.id, asset["code"], rule_type, threshold)
+    if rule_id is None:
+        await update.message.reply_text(
+            "⚠️ تعذر إنشاء التنبيه: قد يكون مكررًا أو وصلت للحد الأقصى "
+            f"({config.ALERT_MAX_RULES} تنبيه) أو القيمة غير صالحة."
+        )
+        return
+
+    is_pct = rule_type in (alerts.RULE_PCT_UP, alerts.RULE_PCT_DOWN)
+    suffix = "%" if is_pct else f" {asset['unit']}"
+    await update.message.reply_text(
+        f"✅ تم إنشاء التنبيه <b>#{rule_id}</b>\n"
+        f"{asset['name_ar']} ({asset['code']}): {alerts.RULE_LABELS[rule_type]} "
+        f"{threshold:,.2f}{suffix}\n\n"
+        f"<i>يتم الفحص كل {config.ALERT_INTERVAL_SECONDS // 60} دقيقة تقريبًا، "
+        f"وبحد أدنى {config.ALERT_COOLDOWN_MINUTES} دقيقة بين كل تنبيه وآخر لنفس القاعدة.</i>",
+        parse_mode="HTML",
+    )
+
+
 async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """يرسل نسخة من قاعدة البيانات إلى مالك البوت فقط.
 
@@ -345,6 +476,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("watchlist", watchlist_command))
+    app.add_handler(CommandHandler("alerts", alerts_command))
+    app.add_handler(CommandHandler("alert", alert_command))
     app.add_handler(CommandHandler("backup", backup_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_error_handler(on_error)

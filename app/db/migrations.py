@@ -128,9 +128,61 @@ def _migration_002_assets_and_watchlist(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_user ON watchlist(telegram_id)")
 
 
+def _migration_003_alerts(conn: sqlite3.Connection) -> None:
+    # عمودان لتتبع السعر السابق (أساس تنبيهات النسبة المئوية).
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(latest_prices)")}
+    if "prev_price" not in existing:
+        conn.execute("ALTER TABLE latest_prices ADD COLUMN prev_price REAL")
+    if "prev_fetched_at" not in existing:
+        conn.execute("ALTER TABLE latest_prices ADD COLUMN prev_fetched_at TEXT")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS alert_rules (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id       INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+            asset_code        TEXT    NOT NULL REFERENCES assets(code),
+            rule_type         TEXT    NOT NULL CHECK (rule_type IN
+                                  ('price_above','price_below','pct_change_up','pct_change_down')),
+            threshold         REAL    NOT NULL,
+            is_active         INTEGER NOT NULL DEFAULT 1,
+            last_triggered_at TEXT,
+            created_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+            UNIQUE (telegram_id, asset_code, rule_type, threshold)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_alert_rules_asset ON alert_rules(asset_code, is_active)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_alert_rules_user ON alert_rules(telegram_id)"
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS notification_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            rule_id     INTEGER REFERENCES alert_rules(id) ON DELETE CASCADE,
+            telegram_id INTEGER NOT NULL,
+            asset_code  TEXT    NOT NULL,
+            message     TEXT    NOT NULL,
+            price       REAL,
+            status      TEXT    NOT NULL DEFAULT 'pending',
+            error       TEXT,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notification_rule ON notification_log(rule_id, created_at)"
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial_users_and_migrations_table", _migration_001_initial),
     Migration(2, "assets_latest_prices_watchlist", _migration_002_assets_and_watchlist),
+    Migration(3, "alert_rules_and_notification_log", _migration_003_alerts),
 )
 
 

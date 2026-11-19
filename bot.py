@@ -11,6 +11,7 @@ from app.bot.handlers import register_handlers
 from app.catalog import sync_assets
 from app.db.migrations import current_version, upgrade
 from app.logging_setup import configure_logging
+from app.services import notifier
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,14 @@ def main() -> None:
     logger.info("إصدار قاعدة البيانات الحالي: %s", current_version())
     sync_assets()
 
-    application = ApplicationBuilder().token(token).build()
+    application = (
+        ApplicationBuilder()
+        .token(token)
+        # محرك التنبيهات يعمل كـTask داخل نفس العملية — لا Polling ثانٍ.
+        .post_init(notifier.start_background)
+        .post_shutdown(notifier.stop_background)
+        .build()
+    )
     register_handlers(application)
 
     logger.info("🤖 ASOUL.IQ bot is running (polling)...")
