@@ -8,6 +8,7 @@ from telegram.ext import ApplicationBuilder
 
 from app import config
 from app.bot.handlers import register_handlers
+from app.catalog import sync_assets
 from app.db.migrations import current_version, upgrade
 from app.logging_setup import configure_logging
 
@@ -29,6 +30,7 @@ def main() -> None:
     if applied:
         logger.info("ترحيلات مطبقة الآن: %s", applied)
     logger.info("إصدار قاعدة البيانات الحالي: %s", current_version())
+    sync_assets()
 
     application = ApplicationBuilder().token(token).build()
     register_handlers(application)

@@ -24,10 +24,10 @@ class GoldProviderTests(unittest.TestCase):
 
         expected_24 = (3000.0 / TROY_OUNCE_GRAMS) * 50.0 * 1.018
         values = {quote.code: quote.value for quote in result.quotes}
-        self.assertAlmostEqual(values["gold_24"], round(expected_24, 2), places=2)
-        self.assertAlmostEqual(values["gold_21"], round(expected_24 * 21 / 24, 2), places=2)
-        self.assertAlmostEqual(values["gold_18"], round(expected_24 * 18 / 24, 2), places=2)
-        self.assertAlmostEqual(values["gold_pound"], round(expected_24 * 21 / 24 * 8, 2), places=2)
+        self.assertAlmostEqual(values["GOLD_24"], round(expected_24, 2), places=2)
+        self.assertAlmostEqual(values["GOLD_21"], round(expected_24 * 21 / 24, 2), places=2)
+        self.assertAlmostEqual(values["GOLD_18"], round(expected_24 * 18 / 24, 2), places=2)
+        self.assertAlmostEqual(values["GOLD_POUND"], round(expected_24 * 21 / 24 * 8, 2), places=2)
         self.assertIn("api.gold-api.com", result.sources)
         self.assertIn("open.er-api.com", result.sources)
 

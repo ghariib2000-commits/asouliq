@@ -20,6 +20,7 @@ class Quote:
     value: float
     unit: str
     decimals: int = 0
+    source_updated_at: str = ""
 
 
 @dataclass(frozen=True)

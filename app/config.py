@@ -45,6 +45,9 @@ HTTP_TIMEOUT_SECONDS: float = float(_env("HTTP_TIMEOUT_SECONDS") or "8")
 # مدة الاحتفاظ بالسعر في الذاكرة حتى لا نضرب المصدر مع كل ضغطة زر.
 PRICE_CACHE_TTL_SECONDS: int = int(_env("PRICE_CACHE_TTL_SECONDS") or "60")
 
+# بعد هذه المدة يُعتبر السعر المخزَّن قديمًا ويُعرض بعلامة تحذير.
+PRICE_STALE_MINUTES: int = int(_env("PRICE_STALE_MINUTES") or "30")
+
 LOG_LEVEL: str = _env("LOG_LEVEL", "INFO") or "INFO"
 
 

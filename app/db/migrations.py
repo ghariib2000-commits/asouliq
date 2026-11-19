@@ -80,8 +80,57 @@ class Migration:
     apply: Callable[[sqlite3.Connection], None]
 
 
+def _migration_002_assets_and_watchlist(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS assets (
+            code         TEXT PRIMARY KEY,
+            kind         TEXT NOT NULL,
+            name_ar      TEXT NOT NULL,
+            name_en      TEXT,
+            symbol       TEXT,
+            sector       TEXT,
+            quote_unit   INTEGER NOT NULL DEFAULT 1,
+            unit         TEXT NOT NULL DEFAULT 'جنيه',
+            provider_key TEXT NOT NULL DEFAULT '',
+            is_active    INTEGER NOT NULL DEFAULT 1,
+            created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_assets_kind ON assets(kind)")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS latest_prices (
+            asset_code  TEXT PRIMARY KEY REFERENCES assets(code),
+            price       REAL NOT NULL,
+            currency    TEXT NOT NULL DEFAULT 'EGP',
+            source      TEXT NOT NULL,
+            updated_at  TEXT NOT NULL,
+            fetched_at  TEXT NOT NULL,
+            provider_key TEXT NOT NULL
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS watchlist (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+            asset_code  TEXT    NOT NULL REFERENCES assets(code),
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            UNIQUE (telegram_id, asset_code)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_user ON watchlist(telegram_id)")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial_users_and_migrations_table", _migration_001_initial),
+    Migration(2, "assets_latest_prices_watchlist", _migration_002_assets_and_watchlist),
 )
 
 

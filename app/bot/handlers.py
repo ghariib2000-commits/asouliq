@@ -21,7 +21,7 @@ from telegram.ext import (
 from app import config
 from app.db.backup import BackupError, backup_database
 from app.providers import PROVIDERS
-from app.services import market, users
+from app.services import assets, market, prices, users, watchlist
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,12 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(provider.label, callback_data=f"fetch_{key}")]
         for key, provider in PROVIDERS.items()
     ]
+    rows.append(
+        [
+            InlineKeyboardButton("⭐ قائمتي", callback_data="menu_watchlist"),
+            InlineKeyboardButton("🔍 البحث", callback_data="menu_search"),
+        ]
+    )
     rows.append(
         [InlineKeyboardButton("⚙️ إعدادات المتابعة والتنبيهات", callback_data="menu_settings")]
     )
@@ -65,6 +71,76 @@ def _back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton(BACK_BUTTON, callback_data="main_menu")]])
 
 
+def _chunk(buttons: list[InlineKeyboardButton], size: int = 2) -> list[list[InlineKeyboardButton]]:
+    return [buttons[i : i + size] for i in range(0, len(buttons), size)]
+
+
+def watchlist_view(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    """يبني نص ولوحة قائمة المتابعة مع حالة حداثة كل سعر."""
+    items = watchlist.items(telegram_id)
+    if not items:
+        return (
+            "⭐ <b>قائمتي</b>\n\nالقائمة فاضية.\n"
+            "ابعت /search واسم الأصل أو كوده لإضافته (مثال: <code>/search دولار</code>).",
+            InlineKeyboardMarkup([[InlineKeyboardButton(BACK_BUTTON, callback_data="main_menu")]]),
+        )
+
+    lines = [f"⭐ <b>قائمتي</b> ({len(items)} أصل)", ""]
+    for item in items:
+        if item["price"] is None:
+            price_text = "بدون سعر محدث"
+        else:
+            price_text = f"{item['price']:,.2f} {item['unit']}"
+            if item["stale"]:
+                price_text += " ⚠️ سعر قديم"
+        lines.append(f"• <b>{item['name_ar']}</b> ({item['code']}): {price_text}")
+
+    remove_buttons = [
+        InlineKeyboardButton(f"🗑 {item['code']}", callback_data=f"wl_del:{item['code']}")
+        for item in items
+    ]
+    keyboard = _chunk(remove_buttons)
+    keyboard.append([InlineKeyboardButton("🔄 تحديث الأسعار", callback_data="wl_refresh")])
+    keyboard.append([InlineKeyboardButton(BACK_BUTTON, callback_data="main_menu")])
+    return "\n".join(lines), InlineKeyboardMarkup(keyboard)
+
+
+def search_view(term: str, telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    results = assets.search_assets(term)
+    if not results:
+        return (
+            f"🔍 مفيش نتائج لـ «{term}».\nجرّب كود الأصل مثل <code>USD</code> أو <code>GOLD_21</code>.",
+            _back_keyboard(),
+        )
+
+    lines = [f"🔍 <b>نتائج البحث عن «{term}»</b>", ""]
+    rows = []
+    for asset in results:
+        lines.append(f"• <b>{asset['name_ar']}</b> — <code>{asset['code']}</code>")
+        if watchlist.contains(telegram_id, asset["code"]):
+            rows.append(
+                [InlineKeyboardButton(f"✅ إزالة {asset['code']}", callback_data=f"wl_del:{asset['code']}")]
+            )
+        else:
+            rows.append(
+                [InlineKeyboardButton(f"➕ إضافة {asset['code']}", callback_data=f"wl_add:{asset['code']}")]
+            )
+    rows.append([InlineKeyboardButton(BACK_BUTTON, callback_data="main_menu")])
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+def _refresh_watchlist_prices(telegram_id: int) -> None:
+    """يجلب أسعار مزودي أصول القائمة فقط، مرة واحدة لكل مزود."""
+    keys = {item["code"] for item in watchlist.items(telegram_id)}
+    providers = set()
+    for code in keys:
+        asset = assets.get_asset(code)
+        if asset is not None:
+            providers.add(asset["provider_key"])
+    for key in providers:
+        prices.refresh(key)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     if user is None or update.message is None:
@@ -89,9 +165,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if update.message is None or user is None:
+        return
+    if not users.has_consent(user.id):
+        await update.message.reply_text("⚠️ يرجى إرسال /start والموافقة أولاً.")
+        return
+
+    term = " ".join(context.args or []).strip()
+    if not term:
+        await update.message.reply_text(
+            "🔍 اكتب اسم الأصل أو كوده بعد الأمر.\nأمثلة:\n"
+            "<code>/search دولار</code>\n<code>/search GOLD_21</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    context.user_data["last_search"] = term
+    text, keyboard = search_view(term, user.id)
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+
+async def watchlist_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if update.message is None or user is None:
+        return
+    if not users.has_consent(user.id):
+        await update.message.reply_text("⚠️ يرجى إرسال /start والموافقة أولاً.")
+        return
+
+    text, keyboard = await asyncio.to_thread(watchlist_view, user.id)
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+
 async def _send_prices(query, service_key: str) -> None:
-    """الجلب يتم في Thread حتى لا يتجمد البوت أثناء انتظار الشبكة."""
-    result = await asyncio.to_thread(market.get_prices, service_key)
+    """الجلب والتخزين يتمان في Thread حتى لا يتجمد البوت أثناء انتظار الشبكة."""
+    result = await asyncio.to_thread(prices.refresh, service_key)
     await query.edit_message_text(
         market.format_result(result),
         parse_mode="HTML",
@@ -138,6 +248,49 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             reply_markup=settings_keyboard(telegram_id),
             parse_mode="HTML",
         )
+
+    elif data == "menu_search":
+        await query.edit_message_text(
+            "🔍 <b>البحث عن أصل</b>\n\n"
+            "ابعت الأمر ده مع اسم الأصل أو كوده:\n"
+            "<code>/search دولار</code>\n<code>/search GOLD_21</code>",
+            reply_markup=_back_keyboard(),
+            parse_mode="HTML",
+        )
+
+    elif data == "menu_watchlist":
+        await query.edit_message_text(
+            "⭐ <b>قائمتي</b>\n\nجاري تحميل أسعار أصولك...",
+            reply_markup=_back_keyboard(),
+            parse_mode="HTML",
+        )
+        try:
+            await asyncio.to_thread(_refresh_watchlist_prices, telegram_id)
+        except Exception:  # noqa: BLE001 - فشل المصدر لا يجب أن يمنع عرض القائمة
+            logger.exception("فشل تحديث أسعار القائمة")
+        text, keyboard = await asyncio.to_thread(watchlist_view, telegram_id)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+    elif data == "wl_refresh":
+        await asyncio.to_thread(_refresh_watchlist_prices, telegram_id)
+        text, keyboard = await asyncio.to_thread(watchlist_view, telegram_id)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+    elif data.startswith(("wl_add:", "wl_del:")):
+        action, _, code = data.partition(":")
+        if action == "wl_add":
+            added = watchlist.add(telegram_id, code)
+            await query.answer("✅ تمت الإضافة" if added else "⚠️ تعذر الإضافة", show_alert=False)
+        else:
+            removed = watchlist.remove(telegram_id, code)
+            await query.answer("🗑 تمت الإزالة" if removed else "الأصل غير موجود", show_alert=False)
+
+        last_search = context.user_data.get("last_search")
+        if last_search:
+            text, keyboard = search_view(last_search, telegram_id)
+        else:
+            text, keyboard = watchlist_view(telegram_id)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
 
     elif data == "toggle_auto":
         users.toggle_auto_updates(telegram_id)
@@ -190,6 +343,8 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("search", search_command))
+    app.add_handler(CommandHandler("watchlist", watchlist_command))
     app.add_handler(CommandHandler("backup", backup_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_error_handler(on_error)

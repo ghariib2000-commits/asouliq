@@ -89,10 +89,10 @@ class GoldEgyptProvider:
         gold_pound = gram_21 * 8  # الجنيه الذهب = 8 جرام عيار 21
 
         quotes = (
-            Quote("gold_24", "عيار 24", round(gram_24, 2), "جنيه/جرام"),
-            Quote("gold_21", "عيار 21", round(gram_21, 2), "جنيه/جرام"),
-            Quote("gold_18", "عيار 18", round(gram_18, 2), "جنيه/جرام"),
-            Quote("gold_pound", "الجنيه الذهب", round(gold_pound, 2), "جنيه"),
+            Quote("GOLD_24", "عيار 24", round(gram_24, 2), "جنيه/جرام"),
+            Quote("GOLD_21", "عيار 21", round(gram_21, 2), "جنيه/جرام"),
+            Quote("GOLD_18", "عيار 18", round(gram_18, 2), "جنيه/جرام"),
+            Quote("GOLD_POUND", "الجنيه الذهب", round(gold_pound, 2), "جنيه"),
         )
 
         return ProviderResult(
@@ -110,4 +110,5 @@ class GoldEgyptProvider:
                 "السعر تقديري محسوب من السعر العالمي وسعر الصرف، وقد يختلف عن سعر الصاغة.",
             ),
             is_estimate=True,
+            meta={"ounce_usd": ounce_usd, "usd_egp": usd_egp, "gold_updated_at": gold_updated},
         )
