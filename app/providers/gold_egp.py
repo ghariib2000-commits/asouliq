@@ -43,7 +43,11 @@ class GoldEgyptProvider:
         fetched_at: datetime = now_cairo()
 
         try:
-            usd_egp = float(_get_json(ER_API_URL)["rates"]["EGP"])
+            fx_payload = _get_json(ER_API_URL)
+            usd_egp = float(fx_payload["rates"]["EGP"])
+            # المصدر يحدّث سعر الصرف مرة يوميًا، فنعرض تاريخ تحديثه
+            # حتى لا يظن المستخدم أن سعر الدولار لحظي.
+            fx_updated = str(fx_payload.get("time_last_update_utc") or "")
         except Exception as exc:  # noqa: BLE001 - أي فشل للمصدر يعني "لا بيانات"
             logger.warning("gold provider: تعذر جلب سعر الدولار: %s", exc)
             return ProviderResult(
@@ -56,7 +60,9 @@ class GoldEgyptProvider:
             )
 
         try:
-            ounce_usd = float(_get_json(GOLD_API_URL)["price"])
+            gold_payload = _get_json(GOLD_API_URL)
+            ounce_usd = float(gold_payload["price"])
+            gold_updated = str(gold_payload.get("updatedAt") or "")
         except Exception as exc:  # noqa: BLE001
             logger.warning("gold provider: تعذر جلب سعر الأونصة: %s", exc)
             return ProviderResult(
@@ -97,8 +103,10 @@ class GoldEgyptProvider:
             quotes=quotes,
             sources=("api.gold-api.com", "open.er-api.com"),
             footnotes=(
-                f"سعر الأونصة العالمية: ${ounce_usd:,.2f}",
-                f"سعر الدولار: {usd_egp:,.2f} جنيه",
+                f"سعر الأونصة العالمية: ${ounce_usd:,.2f}"
+                + (f" (تحديث: {gold_updated})" if gold_updated else ""),
+                f"سعر الدولار: {usd_egp:,.2f} جنيه"
+                + (f" (تحديث المصدر: {fx_updated})" if fx_updated else ""),
                 "السعر تقديري محسوب من السعر العالمي وسعر الصرف، وقد يختلف عن سعر الصاغة.",
             ),
             is_estimate=True,
