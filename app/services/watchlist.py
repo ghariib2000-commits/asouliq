@@ -86,7 +86,8 @@ def items(telegram_id: int, db_path: str | Path | None = None) -> list[dict]:
         rows = conn.execute(
             """
             SELECT a.code, a.name_ar, a.name_en, a.kind, a.quote_unit, a.unit,
-                   p.price, p.fetched_at, p.source
+                   a.provider_key,
+                   p.price, p.prev_price, p.fetched_at, p.source
             FROM watchlist w
             JOIN assets a ON a.code = w.asset_code
             LEFT JOIN latest_prices p ON p.asset_code = w.asset_code
@@ -109,7 +110,9 @@ def items(telegram_id: int, db_path: str | Path | None = None) -> list[dict]:
                 "kind": row["kind"],
                 "quote_unit": row["quote_unit"],
                 "unit": row["unit"],
+                "provider_key": row["provider_key"],
                 "price": row["price"],
+                "prev_price": row["prev_price"],
                 "fetched_at": row["fetched_at"],
                 "source": row["source"],
                 "stale": prices.is_stale(price_row) if price_row is not None else True,

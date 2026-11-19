@@ -20,6 +20,19 @@ from app.services import market
 logger = logging.getLogger(__name__)
 
 
+def refresh_if_due(
+    provider_key: str, db_path: str | Path | None = None
+) -> ProviderResult | None:
+    """يجلب أسعار المزود فقط لو مر وقت كافٍ على آخر جلب. يرجع None لو تم التخطي."""
+    minimum = config.PROVIDER_REFRESH_SECONDS.get(provider_key, 0)
+    newest = newest_fetched_at(provider_key, db_path)
+    age = seconds_since_fetch(newest) if newest else None
+    if minimum > 0 and age is not None and age < minimum:
+        logger.debug("تخطي تحديث %s: آخر جلب قبل %.0f ثانية", provider_key, age)
+        return None
+    return refresh(provider_key, db_path)
+
+
 def save_result(result: ProviderResult, db_path: str | Path | None = None) -> int:
     """يحفظ أسعار نتيجة ناجحة. يتخطى أي أصل غير مسجل في assets."""
     if not result.ok or not result.quotes:

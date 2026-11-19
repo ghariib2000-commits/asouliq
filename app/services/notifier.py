@@ -8,6 +8,7 @@
     2. تجلب أسعار مزوديها مرة واحدة (لا مرة لكل مستخدم).
     3. تقيّم القواعد وتُرسل المستحق فقط.
     4. تسجل نتيجة كل إرسال في notification_log.
+    5. ترسل التقارير اليومية المستحقة (app/services/reports.py).
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from telegram.error import Forbidden, RetryAfter, TelegramError
 
 from app import config
 from app.clock import format_cairo
-from app.services import alerts, prices
+from app.services import alerts, prices, reports
 
 logger = logging.getLogger(__name__)
 
@@ -75,14 +76,8 @@ def refresh_alert_prices(db_path=None) -> list[str]:
     codes = alerts.assets_with_rules(db_path)
     refreshed: list[str] = []
     for provider_key in alerts.provider_keys_for(codes, db_path):
-        minimum = config.PROVIDER_REFRESH_SECONDS.get(provider_key, 0)
-        newest = prices.newest_fetched_at(provider_key, db_path)
-        age = prices.seconds_since_fetch(newest) if newest else None
-        if minimum > 0 and age is not None and age < minimum:
-            logger.debug("تخطي تحديث %s: آخر جلب قبل %.0f ثانية", provider_key, age)
-            continue
-        result = prices.refresh(provider_key, db_path)
-        if result.ok:
+        result = prices.refresh_if_due(provider_key, db_path)
+        if result is not None and result.ok:
             refreshed.append(provider_key)
     return refreshed
 
@@ -131,6 +126,15 @@ async def run_cycle(application, db_path=None) -> int:
 
     if due:
         logger.info("دورة التنبيهات: مستحق %d، أُرسل %d", len(due), sent)
+
+    # التقارير اليومية تعمل في نفس الدورة — لا عملية ولا Polling إضافي.
+    try:
+        await reports.send_due_reports(application, db_path)
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - التقارير لا تُسقط دورة التنبيهات
+        logger.exception("فشل إرسال التقارير اليومية")
+
     return sent
 
 

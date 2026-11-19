@@ -21,7 +21,7 @@ from telegram.ext import (
 from app import config
 from app.db.backup import BackupError, backup_database
 from app.providers import PROVIDERS
-from app.services import alerts, assets, market, prices, users, watchlist
+from app.services import alerts, assets, market, prices, reports, users, watchlist
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,12 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🔍 البحث", callback_data="menu_search"),
         ]
     )
-    rows.append([InlineKeyboardButton("🔔 تنبيهاتي", callback_data="menu_alerts")])
+    rows.append(
+        [
+            InlineKeyboardButton("🔔 تنبيهاتي", callback_data="menu_alerts"),
+            InlineKeyboardButton("📬 التقرير اليومي", callback_data="menu_report"),
+        ]
+    )
     rows.append(
         [InlineKeyboardButton("⚙️ إعدادات المتابعة والتنبيهات", callback_data="menu_settings")]
     )
@@ -64,8 +69,38 @@ def settings_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(f"{status_icon} متابعة: {provider.label}", callback_data=f"toggle_int_{key}")]
         )
 
+    rows.append([InlineKeyboardButton("📬 التقرير اليومي", callback_data="menu_report")])
     rows.append([InlineKeyboardButton(BACK_BUTTON, callback_data="main_menu")])
     return InlineKeyboardMarkup(rows)
+
+
+def report_view(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    """حالة التقرير اليومي + أزرار التفعيل/الإيقاف."""
+    settings = reports.get_settings(telegram_id)
+    if settings and settings["enabled"] == 1:
+        status = (
+            "✅ مُفعّل يوميًا الساعة "
+            f"<b>{reports.format_time(settings['hour'], settings['minute'])}</b> بتوقيت القاهرة"
+        )
+        toggle = InlineKeyboardButton("🔕 إيقاف التقرير", callback_data="report_off")
+    else:
+        status = "🔕 متوقف"
+        toggle = InlineKeyboardButton("✅ تفعيل التقرير", callback_data="report_on")
+
+    text = (
+        "📬 <b>التقرير اليومي</b>\n\n"
+        f"الحالة: {status}\n\n"
+        "في الموعد بيوصلك ملخص <b>قائمتك ⭐</b> بأسعارها ونسبة التغير، "
+        "مع تنبيه للأسعار القديمة.\n\n"
+        "الأوامر:\n"
+        "<code>/report 09:00</code> — تحديد الموعد وتفعيله\n"
+        "<code>/report off</code> — إيقاف\n\n"
+        "<i>محتاج أصول في قائمتك أولًا: /search ثم إضافة.</i>"
+    )
+    keyboard = InlineKeyboardMarkup(
+        [[toggle], [InlineKeyboardButton(BACK_BUTTON, callback_data="main_menu")]]
+    )
+    return text, keyboard
 
 
 def _back_keyboard() -> InlineKeyboardMarkup:
@@ -303,6 +338,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         text, keyboard = alerts_view(telegram_id)
         await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
 
+    elif data == "menu_report":
+        text, keyboard = report_view(telegram_id)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+    elif data == "report_on":
+        reports.enable(telegram_id)
+        await query.answer("✅ تم تفعيل التقرير اليومي")
+        text, keyboard = report_view(telegram_id)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+    elif data == "report_off":
+        reports.disable(telegram_id)
+        await query.answer("🔕 تم إيقاف التقرير اليومي")
+        text, keyboard = report_view(telegram_id)
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
+
     elif data.startswith("al_del:"):
         try:
             rule_id = int(data.split(":", 1)[1])
@@ -435,6 +486,54 @@ async def alert_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/report [HH:MM | on | off] — التقرير اليومي لقائمة المتابعة."""
+    user = update.effective_user
+    if update.message is None or user is None:
+        return
+    if not users.has_consent(user.id):
+        await update.message.reply_text("⚠️ يرجى إرسال /start والموافقة أولاً.")
+        return
+
+    args = context.args or []
+    if not args:
+        text, keyboard = report_view(user.id)
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+        return
+
+    action = args[0].strip().lower()
+    if action in ("off", "إيقاف", "ايقاف", "stop"):
+        reports.disable(user.id)
+        await update.message.reply_text("🔕 تم إيقاف التقرير اليومي.")
+        return
+
+    if action in ("on", "تفعيل", "start"):
+        settings = reports.enable(user.id)
+    else:
+        parsed = reports.parse_time(action)
+        if parsed is None:
+            await update.message.reply_text(
+                "⚠️ موعد غير صالح. استخدم 24 ساعة مثل:\n"
+                "<code>/report 09:00</code>\n<code>/report 21:30</code>\n"
+                "أو <code>/report off</code> للإيقاف.",
+                parse_mode="HTML",
+            )
+            return
+        reports.set_schedule(user.id, parsed[0], parsed[1])
+        settings = reports.get_settings(user.id) or {}
+
+    when = reports.format_time(settings.get("hour", 9), settings.get("minute", 0))
+    lines = [
+        f"✅ <b>تم تفعيل التقرير اليومي</b> الساعة <b>{when}</b> بتوقيت القاهرة.",
+        "",
+        "يوصلك ملخص قائمتك ⭐ في الموعد، ولو الموعد لسه ما جاش النهارده يبدأ من بكرة.",
+    ]
+    if not watchlist.items(user.id):
+        lines.append("")
+        lines.append("⚠️ قائمتك فاضية حاليًا — أضف أصولًا بـ /search عشان يبقى للتقرير محتوى.")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
 async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """يرسل نسخة من قاعدة البيانات إلى مالك البوت فقط.
 
@@ -478,6 +577,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("watchlist", watchlist_command))
     app.add_handler(CommandHandler("alerts", alerts_command))
     app.add_handler(CommandHandler("alert", alert_command))
+    app.add_handler(CommandHandler("report", report_command))
     app.add_handler(CommandHandler("backup", backup_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_error_handler(on_error)

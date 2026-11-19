@@ -25,8 +25,12 @@ class MigrationTests(unittest.TestCase):
     def test_fresh_database_gets_full_schema(self) -> None:
         applied = upgrade(self.db)
 
-        self.assertEqual(applied, [1, 2, 3])
-        self.assertEqual(current_version(self.db), 3)
+        self.assertEqual(applied, [1, 2, 3, 4])
+        self.assertEqual(current_version(self.db), 4)
+        self.assertTrue(
+            {"telegram_id", "enabled", "hour", "minute", "last_sent_on"}
+            <= self._columns("report_settings")
+        )
         self.assertTrue(
             {"telegram_id", "full_name", "consent", "auto_updates", "interests", "joined_at"}
             <= self._columns("users")
@@ -66,7 +70,7 @@ class MigrationTests(unittest.TestCase):
             versions = [r["version"] for r in conn.execute("SELECT version FROM schema_migrations")]
         finally:
             conn.close()
-        self.assertEqual(versions, [1, 2, 3])
+        self.assertEqual(versions, [1, 2, 3, 4])
 
 
 if __name__ == "__main__":

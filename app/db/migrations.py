@@ -179,10 +179,29 @@ def _migration_003_alerts(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_004_report_settings(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS report_settings (
+            telegram_id  INTEGER PRIMARY KEY REFERENCES users(telegram_id) ON DELETE CASCADE,
+            enabled      INTEGER NOT NULL DEFAULT 1,
+            hour         INTEGER NOT NULL DEFAULT 9 CHECK (hour BETWEEN 0 AND 23),
+            minute       INTEGER NOT NULL DEFAULT 0 CHECK (minute BETWEEN 0 AND 59),
+            last_sent_on TEXT,
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_report_due ON report_settings(enabled, hour, minute)"
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "initial_users_and_migrations_table", _migration_001_initial),
     Migration(2, "assets_latest_prices_watchlist", _migration_002_assets_and_watchlist),
     Migration(3, "alert_rules_and_notification_log", _migration_003_alerts),
+    Migration(4, "report_settings", _migration_004_report_settings),
 )
 
 
