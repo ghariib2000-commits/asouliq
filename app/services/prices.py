@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from app import config
+from app.clock import now_cairo
 from app.db.connection import connect, session
 from app.providers.base import ProviderResult
 from app.services import market
@@ -109,6 +110,39 @@ def latest_for(codes: list[str], db_path: str | Path | None = None) -> dict[str,
         return {row["asset_code"]: row for row in rows}
     finally:
         conn.close()
+
+
+def newest_fetched_at(provider_key: str, db_path: str | Path | None = None):
+    """أحدث وقت جلب لأي أصل يتبع هذا المزود (None لو لا يوجد)."""
+    conn = connect(db_path)
+    try:
+        row = conn.execute(
+            """
+            SELECT MAX(p.fetched_at) AS newest
+            FROM latest_prices p
+            JOIN assets a ON a.code = p.asset_code
+            WHERE a.provider_key = ?
+            """,
+            (provider_key,),
+        ).fetchone()
+        return row["newest"] if row else None
+    finally:
+        conn.close()
+
+
+def seconds_since_fetch(value, now=None) -> float | None:
+    try:
+        fetched = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    if fetched.tzinfo is None:
+        fetched = fetched.replace(tzinfo=config_zone())
+    reference = now or datetime.now(fetched.tzinfo)
+    return (reference - fetched).total_seconds()
+
+
+def config_zone():
+    return now_cairo().tzinfo
 
 
 def is_stale(row, max_minutes: int | None = None) -> bool:

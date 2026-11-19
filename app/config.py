@@ -54,6 +54,14 @@ ALERT_INTERVAL_SECONDS: int = int(_env("ALERT_INTERVAL_SECONDS") or "300")
 ALERT_COOLDOWN_MINUTES: int = int(_env("ALERT_COOLDOWN_MINUTES") or "60")
 ALERT_MAX_RULES: int = int(_env("ALERT_MAX_RULES") or "20")
 
+# تباعد أدنى بين كل طلب ومصدره — يقلل ضرب الـAPI ويقلل حدوث rate limit.
+# الذهب سعر عالمي متحرك باستمرار، أما سعر الصرف فمصدره يتحدث يوميًا.
+PROVIDER_REFRESH_SECONDS: dict[str, int] = {
+    "gold": int(_env("GOLD_REFRESH_SECONDS") or "300"),
+    "fx": int(_env("FX_REFRESH_SECONDS") or "1800"),
+    "egx": int(_env("EGX_REFRESH_SECONDS") or "300"),
+}
+
 LOG_LEVEL: str = _env("LOG_LEVEL", "INFO") or "INFO"
 
 

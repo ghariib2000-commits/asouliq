@@ -67,10 +67,20 @@ def format_cairo_from_iso(value: str) -> str:
 
 
 def refresh_alert_prices(db_path=None) -> list[str]:
-    """يجلب أسعار الأصول التي عليها تنبيهات فقط، مرة لكل مزود."""
+    """يجلب أسعار الأصول التي عليها تنبيهات فقط، مرة لكل مزود،
+
+    ويحترم التباعد الأدنى لكل مزود حتى لا نضرب الطبقة المجانية
+    للـAPI بلا داعي (سعر الصرف مصدره يتحدث يوميًا أصلًا).
+    """
     codes = alerts.assets_with_rules(db_path)
     refreshed: list[str] = []
     for provider_key in alerts.provider_keys_for(codes, db_path):
+        minimum = config.PROVIDER_REFRESH_SECONDS.get(provider_key, 0)
+        newest = prices.newest_fetched_at(provider_key, db_path)
+        age = prices.seconds_since_fetch(newest) if newest else None
+        if minimum > 0 and age is not None and age < minimum:
+            logger.debug("تخطي تحديث %s: آخر جلب قبل %.0f ثانية", provider_key, age)
+            continue
         result = prices.refresh(provider_key, db_path)
         if result.ok:
             refreshed.append(provider_key)
