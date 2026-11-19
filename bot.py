@@ -11,7 +11,7 @@ from app.bot.handlers import register_handlers
 from app.catalog import sync_assets
 from app.db.migrations import current_version, upgrade
 from app.logging_setup import configure_logging
-from app.services import notifier
+from app.services import names, notifier
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,8 @@ def main() -> None:
         logger.info("ترحيلات مطبقة الآن: %s", applied)
     logger.info("إصدار قاعدة البيانات الحالي: %s", current_version())
     sync_assets()
+    # ترجمة أسماء الشركات القديمة المسجلة بالإنجليزية.
+    names.apply_arabic_names()
 
     application = (
         ApplicationBuilder()

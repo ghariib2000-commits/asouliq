@@ -13,6 +13,7 @@ from pathlib import Path
 from app import config
 from app.clock import now_cairo
 from app.db.connection import connect, session
+from app.egx_names_ar import arabic_name
 from app.providers.base import ProviderResult
 from app.services import market
 
@@ -44,10 +45,23 @@ def save_result(result: ProviderResult, db_path: str | Path | None = None) -> in
                     INSERT INTO assets (code, kind, name_ar, name_en, unit, provider_key)
                     VALUES (?, ?, ?, ?, 'جنيه', ?)
                     ON CONFLICT(code) DO UPDATE SET
-                        name_ar = excluded.name_ar,
+                        -- لا نستبدل اسمًا عربيًا حقيقيًا بالاسم الإنجليزي.
+                        name_ar = CASE
+                            WHEN assets.name_ar IS NULL
+                              OR assets.name_ar = ''
+                              OR assets.name_ar = excluded.name_en
+                            THEN excluded.name_ar
+                            ELSE assets.name_ar
+                        END,
                         name_en = excluded.name_en
                     """,
-                    (quote.code, register_kind, quote.label, quote.label, result.provider_key),
+                    (
+                        quote.code,
+                        register_kind,
+                        arabic_name(quote.code) or quote.label,
+                        quote.label,
+                        result.provider_key,
+                    ),
                 )
                 known.add(quote.code)
                 logger.info("أصل جديد مسجل تلقائيًا: %s", quote.code)

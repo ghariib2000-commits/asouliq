@@ -4,6 +4,7 @@
     python -m app.cli backup          # نسخة احتياطية + تحقق
     python -m app.cli check           # فحص الترحيلات على نسخة
     python -m app.cli list            # عرض النسخ الموجودة
+    python -m app.cli names           # تطبيق الأسماء العربية على الأسهم المسجلة
     python -m app.cli backup check    # الاثنان معًا قبل أي تعديل
 """
 
@@ -14,6 +15,7 @@ import sys
 from app.db.backup import BackupError, backup_database, list_backups
 from app.db.upgrade_check import MigrationCheckError, check_migration_on_copy
 from app.logging_setup import configure_logging
+from app.services.names import apply_arabic_names
 
 
 def _backup() -> int:
@@ -52,6 +54,12 @@ def _list() -> int:
     return 0
 
 
+def _names() -> int:
+    updated = apply_arabic_names()
+    print(f"[تم] تحديث {updated} اسمًا عربيًا في سجل الأصول.")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     # كونسول ويندوز قد يستخدم ترميزًا لا يدعم العربية، فلا نسمح بسقوط الأمر.
     try:
@@ -59,7 +67,7 @@ def main(argv: list[str]) -> int:
     except (AttributeError, ValueError):
         pass
     configure_logging()
-    commands = {"backup": _backup, "check": _check, "list": _list}
+    commands = {"backup": _backup, "check": _check, "list": _list, "names": _names}
     selected = argv or ["backup", "check"]
 
     exit_code = 0
