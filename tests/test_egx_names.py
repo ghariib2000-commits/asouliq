@@ -31,8 +31,8 @@ def egx_result(quotes) -> ProviderResult:
 
 
 class ArabicNameMapTests(unittest.TestCase):
-    def test_covers_at_least_100_companies(self) -> None:
-        self.assertGreaterEqual(len(NAMES), 100)
+    def test_covers_almost_all_egx_stocks(self) -> None:
+        self.assertGreaterEqual(len(NAMES), 290)
 
     def test_keys_are_clean_tickers(self) -> None:
         for code in NAMES:
